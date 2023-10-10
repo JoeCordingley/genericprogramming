@@ -53,7 +53,7 @@ object SpecificJson:
     case Right(r) => summon[Encoder[R]].encode(r)
   }
 
-  given [A, B: Encoder](using Conversion[A, B]): Encoder[A] = a => summon[Encoder[B]].encode(a)
+  //given [A, B: Encoder](using Conversion[A, B]): Encoder[A] = a => summon[Encoder[B]].encode(a)
   given Conversion[Int, JsonInt] = JsonInt(_)
   given Conversion[Double, JsonDouble] = JsonDouble(_)
   given Conversion[Boolean, JsonBool] = JsonBool(_)
@@ -67,54 +67,23 @@ object SpecificJson:
 
   case class Fix[F[_]](unfix: F[Fix[F]])
 
-  type FixEitherRightEnding[F[_], A] = Fix[[T] =>> Either[F[T], A]]
-  type FixEitherLeftEnding[F[_], A] = Fix[[T] =>> Either[A, F[T]]]
-
-  //type L //: R = Either[L, R]
-
   enum Tree[A]:
     case Branch(left: Tree[A], right: Tree[A])
     case Leaf(value: A)
 
-  //given[F[_]](using Encoder[F[Fix[F]]]): Encoder[Fix[F]] = fix => summon[Encoder[F[Fix[F]]]].encode(fix.unfix)
-
-
+  given [F[_]](using e: => Encoder[F[Fix[F]]]): Encoder[Fix[F]] = fix => e.encode(fix.unfix)
 
   type JsonBranchUnfixed[T] = JsonObject[(JsonPair["left", T], JsonPair["right", T])]
-
-  given EncoderK[JsonBranchUnfixed] with 
-    def encoder[A: Encoder]: Encoder[JsonBranchUnfixed[A]] = summon[Encoder[JsonBranchUnfixed[A]]]
-  //type JsonTreeUnfixed[A, T] = Either[JsonBranchUnfixed[T], A]
-  //type JsonTree[A] = Fix[[T] =>> JsonTreeUnfixed[A, T]]
-  type JsonTree[A] = FixEitherRightEnding[JsonBranchUnfixed, A]
-
-//  given [A: Encoder]: Encoder[JsonTree[A]] = _.unfix match {
-//    case Right(a) => summon[Encoder[A]].encode(a)
-//    case Left(j) => summon[Encoder[JsonBranchUnfixed[JsonTree[A]]]].encode(j)
-//  }
-
-  given [A: Encoder, F[_]](using EncoderK[F]): Encoder[FixEitherRightEnding[F, A]] = _.unfix match {
-    case Right(a) => summon[Encoder[A]].encode(a)
-    case Left(j) => summon[EncoderK[F]].encoder[FixEitherRightEnding[F, A]].encode(j)
-  }
-
-  trait EncoderK[F[_]]{
-    def encoder[A: Encoder]: Encoder[F[A]]
-  }
-//
-//  given fixEitherLeftEnding[A: Encoder]: Encoder[FixEitherLeftEnding[A]] = _.unfix match {
-//    case Left(a) => summon[Encoder[A]].encode(a)
-//    case Right(j) => summon[Encoder[FixEitherLeftEnding[A]]].encode(j)
-//  }
+  type JsonTreeUnfixed[T, A] = Either[JsonBranchUnfixed[T], A]
+  type JsonTree[A] = Fix[[T] =>> JsonTreeUnfixed[T, A]]
 
   given [A, B](using Conversion[A, B]): Conversion[Tree[A], JsonTree[B]] = {
     case Tree.Branch(left, right) => Fix(Left(JsonObject((JsonPair(left), JsonPair(right)))))
     case Tree.Leaf(value) => Fix(Right(value))
   }
 
-
-  val x: Json = summon[Encoder[JsonTree[JsonInt]]].encode(summon[Conversion[Tree[Int], JsonTree[JsonInt]]].convert(Tree.Branch(Tree.Leaf(1), Tree.Branch(Tree.Leaf(2), Tree.Leaf(3)))))
-
+  //val x: Json = summon[Encoder[JsonTree[JsonInt]]].encode(summon[Conversion[Tree[Int], JsonTree[JsonInt]]].convert(Tree.Branch(Tree.Leaf(1), Tree.Branch(Tree.Leaf(2), Tree.Leaf(3)))))
+  val x: Json = summon[Encoder[JsonTree[JsonInt]]].encode(Tree.Branch(Tree.Leaf(1), Tree.Branch(Tree.Leaf(2), Tree.Leaf(3))))
 //
 //  type ProductOfEs[T, E] = Mirror.Product { type MirroredType = T; type MirroredMonoType = T ; type MirroredElemTypes = E}
 //  type NamedProduct[T, E, K] = Mirror.Product { type MirroredType = T; type MirroredMonoType = T; type MirroredElemTypes = E; type MirroredElemLabels = K}
